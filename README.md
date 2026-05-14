@@ -1,16 +1,19 @@
-# SQLite Lab MCP Server (FastMCP + SQLite)
+# Lab MCP SQLite (FastMCP)
 
-Project nay hoan thien lab MCP server voi:
+## 1. Giới thiệu
+
+Dự án này triển khai MCP Server bằng FastMCP kết nối SQLite, đáp ứng đầy đủ yêu cầu lab:
 
 - Tool `search`
 - Tool `insert`
 - Tool `aggregate`
 - Resource `schema://database`
 - Resource template `schema://table/{table_name}`
+- Kiểm thử tự động bằng `pytest`
+- Verify nhanh bằng script `verify_server.py`
+- Kiểm tra thủ công bằng MCP Inspector
 
-Server dung SQLite va co validate an toan cho table/column/operator/aggregate.
-
-## 1) Cau truc du an
+## 2. Cấu trúc dự án
 
 ```text
 implementation/
@@ -19,14 +22,26 @@ implementation/
   init_db.py
   mcp_server.py
   verify_server.py
+  start_inspector.ps1
   tests/
     test_server.py
+demo-assets/
+  screenshots/
+  video/
 requirements.txt
 ```
 
-## 2) Setup moi truong (Windows - PowerShell)
+## 3. Yêu cầu môi trường
 
-Neu ban muon dung dung Python path ban gui:
+- Windows + PowerShell
+- Python khuyến nghị: `3.11.x`
+- Có thể dùng Python khác nếu cài được `fastmcp`
+
+Lưu ý: nếu Python 3.14 báo lỗi `No matching distribution found for fastmcp`, hãy chuyển sang Python 3.11.
+
+## 4. Cài đặt
+
+### Cách 1: dùng Python bạn chỉ định
 
 ```powershell
 & "D:\New folder\python.exe" -m venv venv
@@ -35,13 +50,7 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Hoac khong activate, ban co the goi truc tiep:
-
-```powershell
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Neu gap loi `No matching distribution found for fastmcp`, hay dung Python 3.11:
+### Cách 2: dùng Python 3.11 (khuyến nghị ổn định)
 
 ```powershell
 py -3.11 -m venv venv
@@ -50,44 +59,121 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## 3) Khoi tao database
+## 5. Khởi tạo database
 
 ```powershell
 python implementation\init_db.py
 ```
 
-Ket qua mong doi: in ra duong dan `lab.db` vua duoc tao.
+Kết quả mong đợi: in ra đường dẫn file `implementation/lab.db`.
 
-## 4) Chay server MCP (stdio mac dinh)
+## 6. Chạy test tự động
 
 ```powershell
-python implementation\mcp_server.py
+.\venv\Scripts\python.exe -m pytest -q
 ```
 
-## 5) Verify nhanh (khong can client ngoai)
+Kết quả mong đợi:
+- `3 passed`
 
-Script nay dung `fastmcp.Client` de kiem tra:
-- discover tools/resources/templates
-- goi tool hop le
-- goi loi va nhan error ro rang
+## 7. Verify nhanh toàn bộ server
 
 ```powershell
 python implementation\verify_server.py
 ```
 
-## 6) Chay test
+Script này sẽ kiểm tra:
+- discover 3 tools
+- discover resource + resource template
+- gọi thành công `search`, `insert`, `aggregate`
+- đọc `schema://database`, `schema://table/students`
+- kiểm tra lỗi có chủ đích (`missing_table`)
+
+## 8. Chạy MCP server
 
 ```powershell
-pytest -q
+python implementation\mcp_server.py
 ```
 
-## 7) Chay MCP Inspector (khuyen nghi)
+Server chạy theo `stdio`, nên không có giao diện riêng.  
+Để test bằng UI, dùng MCP Inspector ở mục bên dưới.
+
+## 9. Chạy MCP Inspector
 
 ```powershell
-.\implementation\start_inspector.ps1 -PythonExe "D:\New folder\python.exe"
+.\implementation\start_inspector.ps1 -PythonExe ".\venv\Scripts\python.exe"
 ```
 
-## 8) Vi du cau hinh client MCP
+Sau đó mở link Inspector được in ra terminal và bấm `Connect`.
+
+## 10. Payload mẫu để test 3 tools
+
+### `search`
+
+```json
+{
+  "table": "students",
+  "filters": [
+    {"column": "cohort", "op": "=", "value": "A1"}
+  ],
+  "columns": ["id", "name", "cohort", "age"],
+  "limit": 20,
+  "offset": 0,
+  "order_by": "id",
+  "descending": false
+}
+```
+
+### `insert`
+
+```json
+{
+  "table": "students",
+  "values": {
+    "name": "Demo User",
+    "cohort": "A1",
+    "age": 22
+  }
+}
+```
+
+### `aggregate`
+
+```json
+{
+  "table": "enrollments",
+  "metric": "avg",
+  "column": "score",
+  "filters": null,
+  "group_by": ["course_id"]
+}
+```
+
+## 11. Test resources
+
+- `schema://database`
+- `schema://table/students`
+
+## 12. Test lỗi (validation)
+
+Payload lỗi mẫu:
+
+```json
+{"table":"missing_table"}
+```
+
+Kỳ vọng: báo lỗi rõ ràng `Unknown table 'missing_table'`.
+
+## 13. Các rule an toàn đã triển khai
+
+- Từ chối bảng không tồn tại
+- Từ chối cột không tồn tại
+- Từ chối operator không hỗ trợ
+- Từ chối metric không hỗ trợ
+- Từ chối insert rỗng
+- Dùng truy vấn tham số hóa để tránh SQL injection qua giá trị đầu vào
+
+## 14. Ví dụ cấu hình MCP client
 
 ### Codex (`~/.codex/config.toml`)
 
@@ -113,45 +199,29 @@ args = ["D:/Vin/Github_Lab/Day26-Track3-MCP-tool-integration/implementation/mcp_
 }
 ```
 
-## 9) Tool contract tom tat
+## 15. Minh chứng demo
 
-### `search`
+Thư mục gợi ý:
 
-Input chinh:
-- `table`: ten bang
-- `columns`: danh sach cot (optional)
-- `filters`: danh sach filter dang `{"column","op","value"}`
-- `order_by`, `descending`, `limit`, `offset`
+- Ảnh: `demo-assets/screenshots`
+- Video: `demo-assets/video`
 
-Output:
-- metadata phan trang + `rows`
+Bộ ảnh đã chuẩn hóa tên:
 
-### `insert`
+- `01_tool_search_success.png`
+- `02_tool_insert_success.png`
+- `03_tool_aggregate_success.png`
+- `04_resource_schema_database.png`
+- `05_resource_schema_students.png`
+- `06_tool_search_error_unknown_table.png`
 
-Input:
-- `table`
-- `values` (object key-value, khong duoc rong)
+## 16. Lệnh nhanh tổng hợp
 
-Output:
-- payload vua insert (kem ID sinh tu dong neu co)
+```powershell
+.\venv\Scripts\activate
+python implementation\init_db.py
+.\venv\Scripts\python.exe -m pytest -q
+python implementation\verify_server.py
+python implementation\mcp_server.py
+```
 
-### `aggregate`
-
-Input:
-- `table`
-- `metric`: `count|avg|sum|min|max`
-- `column` (bat buoc cho moi metric tru `count`)
-- `filters` (optional)
-- `group_by` (optional)
-
-Output:
-- danh sach dong aggregate trong `rows`
-
-## 10) Validation da trien khai
-
-- reject bang khong ton tai
-- reject cot khong ton tai
-- reject operator khong ho tro
-- reject metric khong ho tro
-- reject insert rong
-- dung query parameterized cho gia tri dau vao
